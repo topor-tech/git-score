@@ -134,6 +134,41 @@ def parse_clone_progress(line: str) -> dict | None:
     return None
 
 
+def _clean_git_error(stderr: str, fallback: str) -> str:
+    text = stderr.replace("\x1b[K", "")
+    for _phase, _unit, pattern in _PROGRESS_PATTERNS:
+        text = pattern.sub("\n", text)
+    text = re.sub(r"\d+%\s*\(\d+/\d+\)", "\n", text)
+    text = re.sub(r"\(\d+/\d+\)", "\n", text)
+    text = re.sub(r",\s*done\.?", "\n", text, flags=re.I)
+    useful: list[str] = []
+    for part in re.split(r"[\r\n]+", text):
+        for piece in re.split(r"(?=warning:)", part, flags=re.I):
+            cleaned = piece.strip(" \t,);:")
+            if len(cleaned) < 8:
+                continue
+            if useful and useful[-1] == cleaned:
+                continue
+            useful.append(cleaned)
+    return " ".join(useful[-3:]) if useful else fallback
+
+
+def _usable_clone(dest: Path) -> bool:
+    git_dir = dest / ".git"
+    if not git_dir.exists():
+        return False
+    return bool(head_sha(dest))
+
+
+def _retry_checkout(dest: Path) -> None:
+    run_git_in(dest, ["config", "core.longpaths", "true"], check=False)
+    run_git(
+        ["-c", "core.longpaths=true", "-C", str(dest), "checkout", "-f", "HEAD"],
+        timeout=180,
+        check=False,
+    )
+
+
 def clone(
     url: str,
     dest: Path,
@@ -148,7 +183,11 @@ def clone(
         "--no-pager",
         "-c",
         "core.quotepath=false",
+        "-c",
+        "core.longpaths=true",
         "clone",
+        "--config",
+        "core.longpaths=true",
         "--progress",
         "--",
         url,
@@ -227,8 +266,10 @@ def clone(
         proc.kill()
         raise GitError("git clone timed out") from None
     if code != 0:
-        detail = err_tail.strip() or f"git clone failed ({code})"
-        raise GitError(detail)
+        if _usable_clone(dest):
+            _retry_checkout(dest)
+            return
+        raise GitError(_clean_git_error(err_tail, f"git clone failed ({code})"))
 
 
 def is_git_work_tree(path: Path) -> bool:
@@ -348,13 +389,22 @@ def fsck(repo: Path, *, timeout: int = 90) -> dict:
     }
 
 
+def _strip_origin_prefix(ref: str) -> str | None:
+    for prefix in ("refs/remotes/origin/", "origin/"):
+        if ref.startswith(prefix):
+            name = ref[len(prefix) :].strip()
+            return name or None
+    return None
+
+
 def default_branch(repo: Path) -> tuple[str | None, str]:
     """Return (branch_name, source). Prefer origin/HEAD, then current HEAD."""
     proc = run_git_in(repo, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], check=False)
     if proc.returncode == 0:
         ref = decode(proc).strip()
-        if ref.startswith("refs/remotes/origin/"):
-            return ref.split("/")[-1], "origin/HEAD"
+        name = _strip_origin_prefix(ref)
+        if name:
+            return name, "origin/HEAD"
         if ref:
             return ref.rsplit("/", 1)[-1], "origin/HEAD"
     proc = run_git_in(repo, ["rev-parse", "--abbrev-ref", "HEAD"], check=False)
@@ -365,12 +415,19 @@ def default_branch(repo: Path) -> tuple[str | None, str]:
     return None, "none"
 
 
+def branch_sha(repo: Path, name: str) -> str | None:
+    for ref in (f"refs/heads/{name}", f"refs/remotes/origin/{name}"):
+        proc = run_git_in(repo, ["rev-parse", "--verify", f"{ref}^{{commit}}"], check=False)
+        if proc.returncode != 0:
+            continue
+        sha = decode(proc).strip()
+        if sha:
+            return sha
+    return None
+
+
 def branch_exists(repo: Path, name: str) -> bool:
-    proc = run_git_in(repo, ["rev-parse", "--verify", f"refs/heads/{name}"], check=False)
-    if proc.returncode == 0:
-        return True
-    proc = run_git_in(repo, ["rev-parse", "--verify", f"refs/remotes/origin/{name}"], check=False)
-    return proc.returncode == 0
+    return bool(branch_sha(repo, name))
 
 
 def ls_tree_sizes(repo: Path) -> list[dict]:

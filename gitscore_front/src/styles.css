@@ -71,6 +71,11 @@ a {
   color: var(--muted);
   font-size: 12px;
   font-family: "IBM Plex Mono", monospace;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .landing {
@@ -126,6 +131,7 @@ button:disabled {
 .error {
   color: var(--fail);
   margin-top: 12px;
+  overflow-wrap: anywhere;
 }
 
 .recent {
@@ -556,6 +562,13 @@ a.cite {
 .placeholder {
   padding: 24px 16px;
   color: var(--muted);
+}
+
+.check-progress-label {
+  padding: 12px 16px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-log {

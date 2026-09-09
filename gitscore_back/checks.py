@@ -446,13 +446,13 @@ def check_r02(ctx: RepoContext) -> dict:
             evidence_flags={"declared": False, "configured": False, "enforced": None, "observed": True},
             remediation="Set origin/HEAD / server default branch to an existing branch with at least one commit.",
         )
-    exists = git_cli.branch_exists(ctx.path, name)
-    if not exists or not ctx.head_sha:
+    sha = git_cli.branch_sha(ctx.path, name)
+    if not sha:
         return _result(
             "R02",
             status="FAIL",
             summary=f"Default branch '{name}' does not resolve to a commit.",
-            evidence={"branch": name, "source": source, "head": ctx.head_sha},
+            evidence={"branch": name, "source": source},
             evidence_flags={"declared": True, "configured": False, "observed": True},
             remediation="Create the advertised default branch or fix origin/HEAD.",
         )
@@ -466,7 +466,7 @@ def check_r02(ctx: RepoContext) -> dict:
         "R02",
         status=status,
         summary=f"Default branch '{name}' exists and resolves to a commit.{note}",
-        evidence={"branch": name, "source": source, "head": ctx.head_sha},
+        evidence={"branch": name, "source": source, "head": sha},
         evidence_flags={"declared": source == "origin/HEAD", "configured": True, "observed": True},
         remediation="Point origin/HEAD at the server default branch." if status == "WARN" else None,
     )
@@ -1170,7 +1170,7 @@ def check_g12(ctx: RepoContext) -> dict:
     cutoff = ctx.now - STALE_BRANCH_DAYS * DAY
     for b in branches:
         short = b["name"].split("/", 1)[-1]
-        if short in {ctx.default_branch, "main", "master", "develop", "release"}:
+        if short in {ctx.default_branch, "main", "master", "trunk", "develop", "release"}:
             continue
         if b["timestamp"] and b["timestamp"] < cutoff:
             stale.append(b["name"])
@@ -2124,6 +2124,8 @@ def run_all(ctx: RepoContext, on_each=None) -> list[dict]:
     results: list[dict] = []
     total = len(CHECKS)
     for i, spec in enumerate(CHECKS, start=1):
+        if on_each:
+            on_each(results, spec["id"], i, total)
         fn = RUNNERS[spec["id"]]
         try:
             item = fn(ctx)

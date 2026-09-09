@@ -45,6 +45,7 @@ export type Analysis = {
     total?: number;
     unit?: string;
     size?: string | null;
+    check_id?: string | null;
     label?: string;
   } | null;
 };

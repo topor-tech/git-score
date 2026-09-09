@@ -5,6 +5,20 @@ import CheckList from "./CheckList";
 import RepoPane from "./RepoPane";
 import type { Analysis } from "./types";
 
+function shortError(message: string | null): string {
+  if (!message) return "analysis failed";
+  if (!/Receiving objects|Resolving deltas|Checking out files|Compressing objects/i.test(message)) {
+    return message;
+  }
+  const warning = message.match(/warning:.*?(?:checkout failed.*?(?:git restore[^\n]*)?)/i);
+  if (warning) return warning[0].replace(/\s+/g, " ").trim();
+  const lines = message
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/\d+%\s+\(\d+\/\d+\)/.test(line));
+  return lines.at(-1) || "Clone finished, but the working tree could not be checked out.";
+}
+
 export default function AnalysisView({
   id,
   onHome,
@@ -83,7 +97,7 @@ export default function AnalysisView({
       {error ? <p className="error" style={{ padding: "0 16px" }}>{error}</p> : null}
       {analysis?.status === "failed" ? (
         <p className="error" style={{ padding: "0 16px" }}>
-          {analysis.error}
+          {shortError(analysis.error)}
         </p>
       ) : null}
       {analysis ? (

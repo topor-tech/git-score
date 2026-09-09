@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from gitscore_back import git_cli
+from gitscore_back.catalog import BY_ID, CHECKS
 from gitscore_back.checks import build_context, run_all
 from gitscore_back.config import CLONES_DIR
 from gitscore_back.git_cli import GitError
@@ -30,17 +31,33 @@ def _run(store: Store, analysis_id: str) -> None:
         return
     try:
         working = _prepare_working_copy(store, row)
+        total_checks = len(CHECKS)
         store.update_analysis(
             analysis_id,
             working_copy=str(working),
             head_sha=git_cli.head_sha(working),
             status="running_checks",
             checks_json=json.dumps([]),
-            progress=None,
+            progress=json.dumps(
+                {
+                    "phase": "indexing",
+                    "percent": 0,
+                    "current": 0,
+                    "total": total_checks,
+                    "label": f"0/{total_checks} reading history",
+                }
+            ),
         )
         ctx = build_context(working)
 
         def persist(results: list[dict], check_id: str = "", i: int = 0, total: int = 0) -> None:
+            title = BY_ID.get(check_id, {}).get("title", "")
+            if check_id and title:
+                label = f"{i}/{total} {check_id} {title}"
+            elif check_id:
+                label = f"{i}/{total} {check_id}"
+            else:
+                label = f"{i}/{total}"
             store.update_analysis(
                 analysis_id,
                 checks_json=json.dumps(results),
@@ -50,11 +67,13 @@ def _run(store: Store, analysis_id: str) -> None:
                         "percent": int(100 * i / total) if total else 0,
                         "current": i,
                         "total": total,
-                        "label": f"{check_id} ({i}/{total})" if check_id else f"{i}/{total}",
+                        "check_id": check_id or None,
+                        "label": label,
                     }
                 ),
             )
 
+        persist([], "", 0, total_checks)
         run_all(ctx, on_each=persist)
         store.update_analysis(
             analysis_id,

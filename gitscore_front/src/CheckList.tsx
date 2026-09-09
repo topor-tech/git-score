@@ -202,6 +202,18 @@ export default function CheckList({
     return `${key} · ${GROUP_TITLES[key] || key}`;
   }
 
+  const busy = status === "cloning" || status === "queued" || status === "running_checks";
+  const progressText =
+    status === "running_checks"
+      ? progressLabel
+        ? `Running checks… ${progressLabel}`
+        : "Running checks…"
+      : status === "cloning" || status === "queued"
+        ? progressLabel
+          ? `Cloning… ${progressLabel}`
+          : "Waiting for the working copy…"
+        : null;
+
   return (
     <section className="pane">
       <div className="pane-title">
@@ -225,18 +237,14 @@ export default function CheckList({
         </button>
       </div>
       <div className="pane-body">
-        {checks.length === 0 ? (
-          <p className="placeholder">
-            {status === "cloning" || status === "queued"
-              ? progressLabel
-                ? `Cloning… ${progressLabel}`
-                : "Waiting for the working copy…"
-              : "Running checks…"}
-          </p>
+        {busy && progressText ? (
+          <p className="placeholder check-progress-label">{progressText}</p>
+        ) : checks.length === 0 ? (
+          <p className="placeholder">No checks yet.</p>
         ) : null}
-        {(status === "cloning" || status === "running_checks") && progressPercent != null ? (
+        {busy && progressPercent != null ? (
           <div className="meter" style={{ margin: "0 12px 12px" }}>
-            <span style={{ width: `${progressPercent}%` }} />
+            <span style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }} />
           </div>
         ) : null}
         {grouped.map(([key, list]) => (
