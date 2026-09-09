@@ -21,6 +21,15 @@ export type Analysis = {
   completed_at: string | null;
   chat_ready: boolean;
   tree_ready: boolean;
+  progress: {
+    phase?: string;
+    percent?: number;
+    current?: number;
+    total?: number;
+    unit?: string;
+    size?: string | null;
+    label?: string;
+  } | null;
 };
 
 export type TreeEntry = {

@@ -36,6 +36,7 @@ class Store:
                     status TEXT NOT NULL,
                     error TEXT,
                     checks_json TEXT,
+                    progress TEXT,
                     created_at TEXT NOT NULL,
                     completed_at TEXT
                 );
@@ -52,6 +53,11 @@ class Store:
                 """
             )
             self._conn.commit()
+            try:
+                self._conn.execute("ALTER TABLE analyses ADD COLUMN progress TEXT")
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
     def create_analysis(
         self,

@@ -36,6 +36,7 @@ def _run(store: Store, analysis_id: str) -> None:
             head_sha=git_cli.head_sha(working),
             status="running_checks",
             checks_json=json.dumps([]),
+            progress=None,
         )
         ctx = build_context(working)
 
@@ -64,9 +65,17 @@ def _prepare_working_copy(store: Store, row: dict) -> Path:
     analysis_id = row["id"]
     if row["source_type"] == "url":
         dest = CLONES_DIR / analysis_id
-        store.update_analysis(analysis_id, status="cloning")
+        store.update_analysis(
+            analysis_id,
+            status="cloning",
+            progress=json.dumps({"phase": "starting", "percent": 0, "label": "starting clone"}),
+        )
         if not dest.exists():
-            git_cli.clone(source, dest)
+
+            def _progress(info: dict) -> None:
+                store.update_analysis(analysis_id, progress=json.dumps(info))
+
+            git_cli.clone(source, dest, on_progress=_progress)
         return dest
     path = Path(source).expanduser().resolve()
     if not path.is_dir():

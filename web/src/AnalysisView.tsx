@@ -34,7 +34,7 @@ export default function AnalysisView({
       if (status === "complete" || status === "failed") {
         window.clearInterval(handle);
       }
-    }, 800);
+    }, 400);
     return () => {
       cancelled = true;
       window.clearInterval(handle);
@@ -47,7 +47,17 @@ export default function AnalysisView({
     window.location.hash = `#/a/${created.id}`;
   }
 
-  const shortSha = analysis?.head_sha ? analysis.head_sha.slice(0, 8) : "—";
+  const shortSha = analysis?.head_sha ? analysis.head_sha.slice(0, 8) : null;
+  const progress = analysis?.progress;
+  const statusBits = [];
+  if (analysis?.status === "cloning") {
+    statusBits.push("cloning");
+    if (progress?.percent != null) statusBits.push(`${progress.percent}%`);
+    if (progress?.label) statusBits.push(progress.label);
+  } else {
+    statusBits.push(shortSha ?? "—");
+    statusBits.push(analysis?.status ?? "…");
+  }
 
   return (
     <>
@@ -56,7 +66,8 @@ export default function AnalysisView({
           Git Score
         </button>
         <div className="header-meta">
-          {analysis?.source} · {shortSha} · {analysis?.status ?? "…"}
+          {analysis?.source}
+          {statusBits.length ? ` · ${statusBits.join(" · ")}` : ""}
         </div>
         <button type="button" className="ghost" onClick={() => void rerun()} disabled={!analysis}>
           Re-run
@@ -70,7 +81,13 @@ export default function AnalysisView({
       ) : null}
       {analysis ? (
         <div className="workspace">
-          <CheckList checks={analysis.checks} status={analysis.status} onOpenPath={setSelectedPath} />
+          <CheckList
+            checks={analysis.checks}
+            status={analysis.status}
+            onOpenPath={setSelectedPath}
+            progressLabel={analysis.progress?.label}
+            progressPercent={analysis.progress?.percent}
+          />
           <RepoPane
             analysisId={id}
             ready={analysis.tree_ready}

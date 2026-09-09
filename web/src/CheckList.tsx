@@ -73,10 +73,14 @@ export default function CheckList({
   checks,
   status,
   onOpenPath,
+  progressLabel,
+  progressPercent,
 }: {
   checks: CheckResult[];
   status: string;
   onOpenPath: (path: string) => void;
+  progressLabel?: string | null;
+  progressPercent?: number | null;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const grouped = useMemo(() => {
@@ -101,9 +105,16 @@ export default function CheckList({
         {checks.length === 0 ? (
           <p className="placeholder">
             {status === "cloning" || status === "queued"
-              ? "Waiting for the working copy…"
+              ? progressLabel
+                ? `Cloning… ${progressLabel}`
+                : "Waiting for the working copy…"
               : "Running checks…"}
           </p>
+        ) : null}
+        {status === "cloning" && progressPercent != null ? (
+          <div className="meter" style={{ margin: "0 12px 12px" }}>
+            <span style={{ width: `${progressPercent}%` }} />
+          </div>
         ) : null}
         {grouped.map(([category, list]) => (
           <div key={category} className="check-group">

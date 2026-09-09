@@ -48,6 +48,17 @@ def _parse_checks(row: dict) -> list[dict]:
     return data if isinstance(data, list) else []
 
 
+def _parse_progress(row: dict) -> dict | None:
+    raw = row.get("progress")
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _public_analysis(row: dict) -> dict:
     return {
         "id": row["id"],
@@ -58,6 +69,7 @@ def _public_analysis(row: dict) -> dict:
         "status": row["status"],
         "error": row.get("error"),
         "checks": _parse_checks(row),
+        "progress": _parse_progress(row),
         "created_at": row["created_at"],
         "completed_at": row.get("completed_at"),
         "chat_ready": row["status"] == "complete",
