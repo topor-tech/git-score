@@ -23,6 +23,7 @@ export type CheckResult = {
   reason_code?: string | null;
   remediation?: string | null;
   wiki_id?: string;
+  scoring_enabled?: boolean;
   /** legacy v1 */
   score_kind?: "binary" | "ratio";
 };
@@ -97,6 +98,7 @@ export type CatalogCheck = {
   notes: string;
   definition_version: string;
   group_notes?: string;
+  scoring_enabled?: boolean;
   neighbors?: { prev: string | null; next: string | null };
 };
 

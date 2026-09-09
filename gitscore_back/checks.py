@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from gitscore_back import git_cli
-from gitscore_back.catalog import BY_ID, CHECKS, GROUPS
+from gitscore_back.catalog import BY_ID, CHECKS, GROUPS, group_of
 from gitscore_back.config import COMMIT_HISTORY_CAP, HIDDEN_DIR_NAMES
 from gitscore_back.files import looks_like_credential
 
@@ -138,8 +138,9 @@ def _result(
     score: float | None = None,
 ) -> dict:
     meta = BY_ID[check_id]
-    gid = check_id[0]
+    gid = group_of(check_id)
     mode = meta["evaluation_mode"]
+    scoring_enabled = meta.get("scoring_enabled", True)
     if mode == "observation":
         out_status = None if status not in {"UNKNOWN", "NOT_APPLICABLE"} else status
         out_score = None if out_status in {None, "UNKNOWN", "NOT_APPLICABLE"} else score
@@ -153,6 +154,8 @@ def _result(
             out_score = 0.0
         else:
             out_score = score
+    if not scoring_enabled:
+        out_score = None
     return {
         "id": check_id,
         "check_id": check_id,
@@ -160,6 +163,7 @@ def _result(
         "category": gid,
         "group": gid,
         "group_title": GROUPS[gid]["title"],
+        "scoring_enabled": scoring_enabled,
         "tags": meta["tags"],
         "importance": meta["importance"],
         "evaluation_mode": mode,
@@ -1282,125 +1286,9 @@ def _config_present(ctx: RepoContext, names: tuple[str, ...], substrings: tuple[
     return seen
 
 
-def _has_source_ext(ctx: RepoContext, exts: tuple[str, ...]) -> bool:
-    return any(
-        (not _is_generated(p)) and p.lower().endswith(exts)
-        for p in ctx.tracked
-    )
-
-
-def _lint_inventory(ctx: RepoContext) -> dict[str, list[str]]:
-    pyproject = _config_present(ctx, ("pyproject.toml",))
-    pyproject_text = _read_text(ctx, pyproject[0], 80_000) if pyproject else ""
-    precommit = _config_present(
-        ctx,
-        (".pre-commit-config.yaml", ".pre-commit-config.yml"),
-    )
-    python = _config_present(
-        ctx,
-        ("ruff.toml", ".ruff.toml", ".flake8", ".pylintrc", "pylintrc", "setup.cfg"),
-        ("/ruff.toml",),
-    )
-    if pyproject and re.search(r"\[tool\.(ruff|flake8|pylint|black)\]", pyproject_text):
-        python.extend(pyproject)
-    js = _config_present(
-        ctx,
-        (".eslintrc", ".eslintrc.json", ".eslintrc.cjs", ".eslintrc.yml", ".eslintrc.yaml", ".eslintrc.js"),
-        ("eslint.config", ".eslintrc."),
-    )
-    go = _config_present(ctx, (".golangci.yml", ".golangci.yaml", ".golangci.toml"), (".golangci.",))
-    rust = _config_present(ctx, ("clippy.toml", "rustfmt.toml", ".clippy.toml"))
-    ruby = _config_present(ctx, (".rubocop.yml", ".rubocop.yaml"))
-    java = _config_present(ctx, ("checkstyle.xml", "pmd.xml"), ("checkstyle", "/pmd"))
-    fmt = _config_present(
-        ctx,
-        (
-            ".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.yaml",
-            ".prettierrc.js", "prettier.config.js", "prettier.config.cjs", "prettier.config.mjs",
-            ".clang-format", "rustfmt.toml", ".scalafmt.conf",
-        ),
-        ("prettier.config", "/.prettierrc", "prettier"),
-    )
-    if pyproject and re.search(r"\[tool\.(ruff|black|isort)\]", pyproject_text):
-        fmt.extend(pyproject)
-    docs = _config_present(
-        ctx,
-        (
-            ".markdownlint.json", ".markdownlint.yaml", ".markdownlint.yml", ".markdownlintrc",
-            ".markdownlint-cli2.jsonc", ".yamllint", ".yamllint.yml", ".yamllint.yaml",
-            ".vale.ini", "vale.ini",
-        ),
-        ("markdownlint", "yamllint", "/vale."),
-    )
-    shell = _config_present(
-        ctx,
-        (".shellcheckrc", "shellcheckrc", ".hadolint.yaml", ".hadolint.yml", "hadolint.yaml"),
-        ("hadolint", "shellcheck"),
-    )
-    editorconfig = _config_present(ctx, (".editorconfig",))
-    gitattributes = _config_present(ctx, (".gitattributes",))
-    return {
-        "precommit": precommit,
-        "python": python,
-        "js": js,
-        "go": go,
-        "rust": rust,
-        "ruby": ruby,
-        "java": java,
-        "formatter": fmt,
-        "docs": docs,
-        "shell": shell,
-        "editorconfig": editorconfig,
-        "gitattributes": gitattributes,
-        "any_lint": precommit + python + js + go + rust + ruby + java,
-        "pyproject": pyproject,
-    }
-
-
-def _langs_needing_lint(ctx: RepoContext) -> dict[str, bool]:
-    return {
-        "python": _has_source_ext(ctx, (".py",)),
-        "js": _has_source_ext(ctx, (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")),
-        "go": _has_source_ext(ctx, (".go",)),
-        "rust": _has_source_ext(ctx, (".rs",)),
-        "ruby": _has_source_ext(ctx, (".rb",)),
-        "java": _has_source_ext(ctx, (".java", ".kt", ".kts")),
-    }
-
-
-def _ci_lint_text(ctx: RepoContext) -> str:
-    parts = [_read_text(ctx, p, 80_000) for p in _ci_paths(ctx)[:8]]
-    parts.extend(_read_text(ctx, p, 40_000) for p in _lint_inventory(ctx)["precommit"][:2])
-    return "\n".join(parts).lower()
-
-
 def check_q06(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    paths = inv["any_lint"] + inv["formatter"] + inv["precommit"]
-    seen: list[str] = []
-    for p in paths:
-        if p not in seen:
-            seen.append(p)
-    if not seen:
-        return _result(
-            "Q06",
-            status="FAIL",
-            summary="No linter/formatter config found (pre-commit, ruff, eslint, …).",
-            evidence={"paths": []},
-            evidence_flags={"declared": False},
-            remediation="Add a linter/formatter and fail CI when it fails. A local hook alone is not enforcement.",
-        )
-    ci = _ci_paths(ctx)
-    status = "WARN" if not ci else "PASS"
-    extra = " CI config exists so enforcement is plausible but not proven." if ci else " No CI config — local-only."
-    return _result(
-        "Q06",
-        status=status,
-        summary=f"Found {seen[0]}.{extra}",
-        evidence={"paths": seen[:15] + ci[:5]},
-        evidence_flags={"declared": True, "enforced": None, "observed": False},
-        remediation="Run the same linters in CI as required checks." if status == "WARN" else None,
-    )
+    from gitscore_back.lint_checks import overview_q06
+    return overview_q06(ctx, {})
 
 
 def check_q07(ctx: RepoContext) -> dict:
@@ -1498,482 +1386,6 @@ def check_q10(ctx: RepoContext) -> dict:
         "UNSUPPORTED_ADAPTER",
         "CI feedback time needs pipeline/job timestamps and queue vs execution split.",
         missing=["gitlab_api"],
-    )
-
-
-def check_q11(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    langs = _langs_needing_lint(ctx)
-    present = [k for k, v in langs.items() if v]
-    if not present:
-        return _result(
-            "Q11",
-            status="NOT_APPLICABLE",
-            summary="No Python/JS/TS/Go/Rust/Ruby/Java sources detected for language linters.",
-            reason_code="NOT_APPLICABLE",
-            evidence={"paths": []},
-        )
-    covered = [k for k in present if inv[k]]
-    missing = [k for k in present if not inv[k]]
-    if inv["precommit"] and missing:
-        # pre-commit may still cover a language; treat as WARN not FAIL
-        status = "WARN"
-        summary = (
-            f"Languages {', '.join(missing)} have no dedicated linter config; "
-            f"only {inv['precommit'][0]} found."
-        )
-        rem = "Add a language-specific linter (ruff, eslint, golangci-lint, …) for each primary language."
-    elif missing:
-        status = "FAIL"
-        summary = f"No linter config for {', '.join(missing)}."
-        rem = "Add a linter config for each primary language and run it in CI."
-    else:
-        status = "PASS"
-        summary = f"Linter config found for {', '.join(covered)}."
-        rem = None
-    paths = []
-    for k in covered:
-        paths.extend(inv[k][:3])
-    paths.extend(inv["precommit"][:2])
-    return _result(
-        "Q11",
-        status=status,
-        summary=summary,
-        observations={"languages": present, "missing": missing},
-        evidence={"paths": paths[:15]},
-        evidence_flags={"declared": bool(covered or inv["precommit"])},
-        remediation=rem,
-    )
-
-
-def check_q12(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    langs = _langs_needing_lint(ctx)
-    if not any(langs.values()) and not _has_source_ext(ctx, (".css", ".html", ".md")):
-        return _result(
-            "Q12",
-            status="NOT_APPLICABLE",
-            summary="No source files that typically use an autoformatter.",
-            reason_code="NOT_APPLICABLE",
-            evidence={"paths": []},
-        )
-    paths = list(inv["formatter"])
-    if inv["python"] and inv["pyproject"]:
-        paths.extend(inv["pyproject"])
-    ci_text = _ci_lint_text(ctx)
-    fmt_in_ci = any(
-        token in ci_text
-        for token in (
-            "prettier", "ruff format", "ruff-format", "black", "gofmt", "gofumpt",
-            "rustfmt", "clang-format", "--check", "format check",
-        )
-    )
-    if not paths and not fmt_in_ci:
-        return _result(
-            "Q12",
-            status="FAIL",
-            summary="No formatter config found (prettier, ruff format, black, gofmt, …).",
-            evidence={"paths": []},
-            evidence_flags={"declared": False},
-            remediation="Add a formatter and run it as `--check` in CI.",
-        )
-    ci = _ci_paths(ctx)
-    if not ci:
-        status = "WARN"
-        extra = " No CI config — local-only."
-        rem = "Run the formatter as a required CI check, not only in the editor."
-    elif not fmt_in_ci:
-        status = "WARN"
-        extra = " CI exists but no format-check command was found."
-        rem = "Add a format `--check`/`--diff` job; editor format-on-save is not enforcement."
-    else:
-        status = "PASS"
-        extra = " CI mentions a format check."
-        rem = None
-    return _result(
-        "Q12",
-        status=status,
-        summary=f"Formatter config: {(paths or ['(CI only)'])[0]}.{extra}",
-        evidence={"paths": (paths + ci)[:15]},
-        evidence_flags={"declared": True, "enforced": None, "observed": False},
-        remediation=rem,
-    )
-
-
-_SUPPRESS_RE = re.compile(
-    r"(eslint-disable(?:-next-line)?|ruff:\s*noqa|noqa:\s*\*|pylint:\s*disable=all|"
-    r"#\s*type:\s*ignore\[|nolint|golangci-lint-disable)",
-    re.I,
-)
-_BLANKET_IGNORE_RE = re.compile(
-    r"(?m)^(\*|/\*\*|/\*\*/?|\*\*/?)\s*$|ignore\s*=\s*\[?\s*[\"']\*[\"']",
-)
-
-
-def check_q13(ctx: RepoContext) -> dict:
-    ignore_files = _config_present(
-        ctx,
-        (".eslintignore", ".prettierignore", ".ruffignore", ".flake8", ".markdownlintignore"),
-        ("eslintignore", "prettierignore", "per-file-ignores"),
-    )
-    blanket = []
-    for p in ignore_files[:8]:
-        text = _read_text(ctx, p, 40_000)
-        if _BLANKET_IGNORE_RE.search(text) or re.search(r"(?m)^/\s*$", text):
-            blanket.append(p)
-    inline = []
-    scanned = 0
-    for p in ctx.tracked:
-        if _is_generated(p) or _is_binary_path(p):
-            continue
-        if Path(p).suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs"}:
-            continue
-        scanned += 1
-        if scanned > 250:
-            break
-        if _SUPPRESS_RE.search(_read_text(ctx, p, 20_000)):
-            inline.append(p)
-            if len(inline) >= 20:
-                break
-    if blanket:
-        return _result(
-            "Q13",
-            status="FAIL",
-            summary=f"Blanket lint ignore in {blanket[0]}.",
-            evidence={"paths": blanket + inline[:8]},
-            observations={"inline_suppressions_sampled": len(inline), "files_scanned": scanned},
-            evidence_flags={"declared": True},
-            remediation="Replace global `*` ignores with path-scoped exceptions that have a reason.",
-        )
-    if len(inline) >= 12:
-        return _result(
-            "Q13",
-            status="WARN",
-            summary=f"Found inline suppressions in {len(inline)} sampled files.",
-            evidence={"paths": inline[:15]},
-            observations={"inline_suppressions_sampled": len(inline), "files_scanned": scanned},
-            evidence_flags={"observed": True},
-            remediation="Bound eslint-disable / noqa / nolint and require a reason comment.",
-        )
-    return _result(
-        "Q13",
-        status="PASS",
-        summary=(
-            "No blanket ignore files; "
-            f"{len(inline)} sampled file(s) have inline suppressions."
-            if ignore_files or inline
-            else "No lint ignore files or sampled inline suppressions."
-        ),
-        evidence={"paths": ignore_files[:8] + inline[:8]},
-        observations={"inline_suppressions_sampled": len(inline), "files_scanned": scanned},
-        evidence_flags={"observed": True},
-    )
-
-
-def check_q14(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    if not inv["precommit"]:
-        return _result(
-            "Q14",
-            status="NOT_APPLICABLE",
-            summary="No pre-commit config; local hooks are not in use.",
-            reason_code="NOT_APPLICABLE",
-            evidence={"paths": []},
-        )
-    ci = _ci_paths(ctx)
-    if not ci:
-        return _result(
-            "Q14",
-            status="WARN",
-            summary=f"Found {inv['precommit'][0]} but no CI config to compare against.",
-            evidence={"paths": inv["precommit"]},
-            evidence_flags={"declared": True, "enforced": False},
-            remediation="Run the same pre-commit hooks (or the same tools) as required CI jobs.",
-        )
-    hook_text = "\n".join(_read_text(ctx, p, 80_000) for p in inv["precommit"][:2]).lower()
-    ci_text = _ci_lint_text(ctx)
-    tools = [
-        "ruff", "eslint", "prettier", "black", "flake8", "mypy", "golangci",
-        "shellcheck", "hadolint", "markdownlint", "yamllint", "pre-commit",
-    ]
-    in_hooks = [t for t in tools if t in hook_text]
-    in_ci = [t for t in in_hooks if t in ci_text]
-    if "pre-commit" in ci_text or (in_hooks and len(in_ci) == len(in_hooks)):
-        status = "PASS"
-        summary = "pre-commit tools are named in CI (or CI runs pre-commit)."
-        rem = None
-    elif in_ci:
-        status = "WARN"
-        summary = f"CI mentions {', '.join(in_ci)} but not all pre-commit tools ({', '.join(in_hooks)})."
-        rem = "Keep local hooks a subset of CI; do not run a different rule set locally."
-    else:
-        status = "WARN"
-        summary = "pre-commit exists, but CI does not mention those tools."
-        rem = "Run `pre-commit run --all-files` (or the same linters) in CI."
-    return _result(
-        "Q14",
-        status=status,
-        summary=summary,
-        observations={"hook_tools": in_hooks, "ci_tools": in_ci},
-        evidence={"paths": inv["precommit"] + ci[:5]},
-        evidence_flags={"declared": True, "enforced": None},
-        remediation=rem,
-    )
-
-
-def check_q15(ctx: RepoContext) -> dict:
-    paths = _lint_inventory(ctx)["editorconfig"]
-    if not paths:
-        return _result(
-            "Q15",
-            status="FAIL",
-            summary="No .editorconfig found.",
-            evidence={"paths": []},
-            evidence_flags={"declared": False},
-            remediation="Add EditorConfig for indent, charset, and final newline so format noise stays out of review.",
-        )
-    text = _read_text(ctx, paths[0], 20_000)
-    useful = any(k in text.lower() for k in ("indent_style", "charset", "end_of_line", "insert_final_newline"))
-    return _result(
-        "Q15",
-        status="PASS" if useful else "WARN",
-        summary=(
-            f"Found {paths[0]} with editor basics."
-            if useful
-            else f"Found {paths[0]} but it does not set indent/charset/eol."
-        ),
-        evidence={"paths": paths},
-        evidence_flags={"declared": True},
-        remediation=None if useful else "Set indent_style, charset, end_of_line, and insert_final_newline.",
-    )
-
-
-def check_q16(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    if not (inv["any_lint"] or inv["formatter"] or _ci_paths(ctx)):
-        return _result(
-            "Q16",
-            status="FAIL",
-            summary="No linter/CI config in which warnings-as-errors could be set.",
-            evidence={"paths": []},
-            evidence_flags={"declared": False},
-            remediation="Fail CI on compiler/linter warnings in the agreed scope (`-Werror`, `--max-warnings 0`).",
-        )
-    ci_text = _ci_lint_text(ctx)
-    config_blobs = []
-    for p in (inv["any_lint"] + inv["formatter"] + inv["pyproject"])[:10]:
-        config_blobs.append(_read_text(ctx, p, 40_000))
-    blob = (ci_text + "\n" + "\n".join(config_blobs)).lower()
-    hits = [
-        token
-        for token in (
-            "-werror", "werror", "warningsaserrors", "treat-warnings-as-errors",
-            "max-warnings 0", "maxwarnings: 0", "max-warnings=0",
-            "deny(warnings)", "rustflags", "fail_on_warnings",
-        )
-        if token in blob.replace(" ", "").replace("_", "") or token in blob
-    ]
-    # second pass with original blob for spaced tokens
-    if "max-warnings 0" in blob or "max-warnings=0" in blob:
-        hits.append("max-warnings 0")
-    if "-werror" in blob or " -werror" in blob or "werror" in blob:
-        hits.append("werror")
-    seen_hits = []
-    for h in hits:
-        if h not in seen_hits:
-            seen_hits.append(h)
-    paths = _ci_paths(ctx)[:5] + inv["any_lint"][:5]
-    if seen_hits:
-        return _result(
-            "Q16",
-            status="PASS",
-            summary=f"Warnings-as-errors signal found ({seen_hits[0]}).",
-            observations={"tokens": seen_hits},
-            evidence={"paths": paths},
-            evidence_flags={"declared": True, "enforced": None},
-        )
-    return _result(
-        "Q16",
-        status="WARN",
-        summary="Linter/CI config exists, but warnings-as-errors was not found.",
-        evidence={"paths": paths},
-        evidence_flags={"declared": False, "enforced": None},
-        remediation="Fail the agreed lint/compiler warnings in CI; unbounded max-warnings hides debt.",
-    )
-
-
-def check_q17(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    configs = inv["any_lint"] + inv["formatter"] + inv["docs"]
-    ignore_files = _config_present(
-        ctx,
-        (".eslintignore", ".prettierignore", ".ruffignore", ".gitignore"),
-        ("eslintignore", "prettierignore"),
-    )
-    generated_present = any(_is_generated(p) for p in ctx.tracked[:2000]) or any(
-        part in "/".join(Path(p).parts).lower()
-        for p in ctx.tracked[:2000]
-        for part in ("node_modules", "vendor", "dist", "build", "generated")
-    )
-    needles = ("node_modules", "vendor/", "dist/", "build/", "generated", "__pycache__", "*.min.js")
-    excluded = []
-    for p in (configs + ignore_files)[:12]:
-        if any(n in _read_text(ctx, p, 40_000).lower() for n in needles):
-            excluded.append(p)
-    if not configs and not ignore_files:
-        return _result(
-            "Q17",
-            status="NOT_APPLICABLE",
-            summary="No linter config to exclude generated/vendor paths from.",
-            reason_code="NOT_APPLICABLE",
-            evidence={"paths": []},
-        )
-    if excluded:
-        return _result(
-            "Q17",
-            status="PASS",
-            summary=f"Generated/vendor exclude found in {excluded[0]}.",
-            evidence={"paths": excluded[:10]},
-            evidence_flags={"declared": True},
-        )
-    status = "WARN" if generated_present or configs else "PASS"
-    return _result(
-        "Q17",
-        status=status,
-        summary=(
-            "Linter config does not mention vendor/generated excludes."
-            if status == "WARN"
-            else "No generated/vendor paths detected; exclude rules not required."
-        ),
-        evidence={"paths": (configs + ignore_files)[:10]},
-        evidence_flags={"declared": False},
-        remediation="Exclude node_modules, dist, vendor, and generated paths from style lint (not from secret/SAST scans)."
-        if status == "WARN"
-        else None,
-    )
-
-
-def check_q18(ctx: RepoContext) -> dict:
-    md = [p for p in ctx.tracked if p.lower().endswith((".md", ".mdx")) and not _is_generated(p)]
-    yml = [p for p in ctx.tracked if p.lower().endswith((".yml", ".yaml")) and not _is_generated(p)]
-    if not md and not yml:
-        return _result(
-            "Q18",
-            status="NOT_APPLICABLE",
-            summary="No Markdown/YAML files to lint.",
-            reason_code="NOT_APPLICABLE",
-            evidence={"paths": []},
-        )
-    inv = _lint_inventory(ctx)
-    ci_text = _ci_lint_text(ctx)
-    docs_in_ci = any(t in ci_text for t in ("markdownlint", "yamllint", "vale", "spectral"))
-    if inv["docs"] or docs_in_ci:
-        return _result(
-            "Q18",
-            status="PASS",
-            summary=f"Docs/config linter found ({(inv['docs'] or ['CI'])[0]}).",
-            evidence={"paths": inv["docs"][:10] + md[:3] + yml[:3]},
-            evidence_flags={"declared": True, "enforced": None},
-        )
-    return _result(
-        "Q18",
-        status="WARN",
-        summary=f"{len(md)} Markdown and {len(yml)} YAML file(s) with no markdownlint/yamllint config.",
-        evidence={"paths": md[:6] + yml[:6]},
-        evidence_flags={"declared": False},
-        remediation="Add markdownlint and/or yamllint for docs and YAML configs. This does not replace README usefulness (D01).",
-    )
-
-
-def check_q19(ctx: RepoContext) -> dict:
-    shells = [
-        p for p in ctx.tracked
-        if (not _is_generated(p)) and (
-            p.lower().endswith((".sh", ".bash", ".ksh", ".zsh"))
-            or Path(p).name.lower() in {"makefile"}
-        )
-    ]
-    dockers = [
-        p for p in ctx.tracked
-        if (not _is_generated(p)) and (
-            Path(p).name.lower().startswith("dockerfile")
-            or p.lower().endswith(".dockerfile")
-        )
-    ]
-    if not shells and not dockers:
-        return _result(
-            "Q19",
-            status="NOT_APPLICABLE",
-            summary="No shell scripts or Dockerfiles detected.",
-            reason_code="NOT_APPLICABLE",
-            evidence={"paths": []},
-        )
-    inv = _lint_inventory(ctx)
-    ci_text = _ci_lint_text(ctx)
-    tools = any(t in ci_text for t in ("shellcheck", "hadolint", "dockerfilelint")) or bool(inv["shell"])
-    if tools:
-        return _result(
-            "Q19",
-            status="PASS",
-            summary=f"Shell/Dockerfile linter found ({(inv['shell'] or ['CI'])[0]}).",
-            evidence={"paths": inv["shell"][:8] + shells[:4] + dockers[:4]},
-            evidence_flags={"declared": True, "enforced": None},
-        )
-    kinds = []
-    if shells:
-        kinds.append("shell")
-    if dockers:
-        kinds.append("Dockerfile")
-    return _result(
-        "Q19",
-        status="WARN",
-        summary=f"{'/'.join(kinds)} files exist without shellcheck/hadolint config.",
-        evidence={"paths": shells[:8] + dockers[:8]},
-        evidence_flags={"declared": False},
-        remediation="Add ShellCheck and Hadolint in CI. This does not replace image scanning.",
-    )
-
-
-def check_q20(ctx: RepoContext) -> dict:
-    inv = _lint_inventory(ctx)
-    attrs = inv["gitattributes"]
-    editor = inv["editorconfig"]
-    signals = []
-    paths = []
-    if attrs:
-        text = _read_text(ctx, attrs[0], 40_000).lower()
-        paths.append(attrs[0])
-        if "eol=" in text or "text=auto" in text:
-            signals.append("gitattributes")
-    if editor:
-        text = _read_text(ctx, editor[0], 20_000).lower()
-        paths.append(editor[0])
-        if "end_of_line" in text or "charset" in text:
-            signals.append("editorconfig")
-    if signals:
-        return _result(
-            "Q20",
-            status="PASS",
-            summary=f"Line-ending/encoding policy declared via {', '.join(signals)}.",
-            evidence={"paths": paths},
-            evidence_flags={"declared": True},
-        )
-    if attrs or editor:
-        return _result(
-            "Q20",
-            status="WARN",
-            summary="Found attributes/EditorConfig but no explicit eol/charset policy.",
-            evidence={"paths": paths},
-            evidence_flags={"declared": False},
-            remediation="Set `text=auto`/`eol=` in .gitattributes or end_of_line/charset in EditorConfig.",
-        )
-    return _result(
-        "Q20",
-        status="FAIL",
-        summary="No .gitattributes or EditorConfig line-ending/encoding policy.",
-        evidence={"paths": []},
-        evidence_flags={"declared": False},
-        remediation="Declare text=auto/eol in .gitattributes (and EditorConfig) so CRLF/LF mixing is intentional.",
     )
 
 
@@ -2676,9 +2088,7 @@ RUNNERS = {
     "G09": check_g09, "G10": check_g10, "G11": check_g11, "G12": check_g12,
     "Q01": check_q01, "Q02": check_q02, "Q03": check_q03, "Q04": check_q04,
     "Q05": check_q05, "Q06": check_q06, "Q07": check_q07, "Q08": check_q08,
-    "Q09": check_q09, "Q10": check_q10, "Q11": check_q11, "Q12": check_q12,
-    "Q13": check_q13, "Q14": check_q14, "Q15": check_q15, "Q16": check_q16,
-    "Q17": check_q17, "Q18": check_q18, "Q19": check_q19, "Q20": check_q20,
+    "Q09": check_q09, "Q10": check_q10,
     "S01": check_s01, "S02": check_s02, "S03": check_s03, "S04": check_s04,
     "S05": check_s05, "S06": check_s06, "S07": check_s07, "S08": check_s08,
     "S09": check_s09, "S10": check_s10, "S11": check_s11, "S12": check_s12,
@@ -2692,12 +2102,15 @@ RUNNERS = {
 
 
 def run_all(ctx: RepoContext, on_each=None) -> list[dict]:
+    from gitscore_back.lint_checks import LT_RUNNERS, overview_q06
+
+    runners = {**RUNNERS, **LT_RUNNERS}
     results: list[dict] = []
     total = len(CHECKS)
     for i, spec in enumerate(CHECKS, start=1):
         if on_each:
             on_each(results, spec["id"], i, total)
-        fn = RUNNERS[spec["id"]]
+        fn = runners[spec["id"]]
         try:
             item = fn(ctx)
         except Exception as exc:
@@ -2709,4 +2122,12 @@ def run_all(ctx: RepoContext, on_each=None) -> list[dict]:
         results.append(item)
         if on_each:
             on_each(results, spec["id"], i, total)
+    by_id = {item["id"]: item for item in results}
+    q06 = overview_q06(ctx, by_id)
+    for i, item in enumerate(results):
+        if item["id"] == "Q06":
+            results[i] = q06
+            if on_each:
+                on_each(results, "Q06", i + 1, total)
+            break
     return results

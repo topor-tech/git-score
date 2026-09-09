@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import type { CheckResult, GroupBy } from "./types";
 
-const GROUP_ORDER = ["R", "D", "G", "Q", "S", "L", "T"];
+const GROUP_ORDER = ["R", "D", "G", "Q", "LT", "S", "L", "T"];
 const GROUP_TITLES: Record<string, string> = {
   R: "Git hygiene",
   D: "Docs & ownership",
   G: "Change control",
   Q: "CI & quality",
+  LT: "Linting",
   S: "Security",
   L: "Release",
   T: "Team & process",

@@ -22,7 +22,7 @@ function parseHash(): Route {
   const qIndex = h.indexOf("?");
   const path = (qIndex >= 0 ? h.slice(0, qIndex) : h) || "/";
   const params = new URLSearchParams(qIndex >= 0 ? h.slice(qIndex + 1) : "");
-  const wiki = path.match(/^\/wiki(?:\/([A-Za-z]\d{2}))?\/?$/);
+  const wiki = path.match(/^\/wiki(?:\/([A-Za-z]+\d{2}))?\/?$/);
   if (wiki) return { kind: "wiki", checkId: wiki[1] ? wiki[1].toUpperCase() : null };
   const analysis = path.match(/^\/a\/([^/]+)$/);
   if (analysis) {

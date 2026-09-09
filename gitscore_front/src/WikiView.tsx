@@ -11,7 +11,7 @@ function mdInline(text: string): ReactNode[] {
     if (match.index > last) nodes.push(text.slice(last, match.index));
     if (match[1] && match[2]) {
       const href = match[2];
-      const internal = href.match(/^([RGDQSLT]\d{2})$/i);
+      const internal = href.match(/^([A-Z]+\d{2})$/i);
       if (internal) {
         nodes.push(
           <a key={match.index} href={`#/wiki/${internal[1].toUpperCase()}`}>
