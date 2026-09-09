@@ -6,14 +6,14 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from gitscore_back.catalog import BY_ID, CHECKS, GROUPS, public_definition
+from gitscore_back.catalog import BY_ID, CHECKS, GROUPS, group_of, public_definition
 from gitscore_back.config import ROOT
 
 CHECKS_MD = ROOT / "docs" / "repository-checks" / "checks.md"
 APPROACH_MD = ROOT / "docs" / "repository-checks" / "approach.md"
 
 _GROUP_HEAD = re.compile(
-    r"^## ([RGDQSLT])\.\s+(.+?)\s+[—–-]\s+(\d+)\s+",
+    r"^## ([A-Z]+)\.\s+(.+?)\s+[—–-]\s+(\d+)\s+",
     re.M,
 )
 _MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -87,7 +87,7 @@ def _parse_tables_and_notes(text: str) -> tuple[dict[str, dict], dict[str, str],
             if len(cells) < 6:
                 continue
             cid, title, tags, interpretation, implementation, importance = cells[:6]
-            if not re.fullmatch(r"[RGDQSLT]\d{2}", cid):
+            if not re.fullmatch(r"[A-Z]+\d{2}", cid):
                 continue
             pages[cid] = {
                 "id": cid,
@@ -152,7 +152,7 @@ def wiki_check(check_id: str) -> dict | None:
     md = load_markdown_wiki()
     page = md["pages"].get(check_id, {})
     body = public_definition(BY_ID[check_id], page)
-    gid = check_id[0]
+    gid = group_of(check_id)
     body["group_notes"] = md["notes"].get(gid, "")
     body["neighbors"] = _neighbors(check_id)
     return body

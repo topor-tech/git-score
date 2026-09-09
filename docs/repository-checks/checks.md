@@ -2,9 +2,9 @@
 
 Статус: предлагаемый каталог, версия 0.1. Дата: 2026-09-09.
 
-Связанный документ: [подход, оценка и правила интерпретации](repository-health-approach.md).
+Связанный документ: [подход, оценка и правила интерпретации](approach.md). Детализация линтинга: [linting.md](linting.md).
 
-Каталог включает 82 проверки. ID стабильны и пригодны для конфигурации, API, ссылок на находки и будущих страниц сайта. Наличие проверки в каталоге не означает, что она уже реализована.
+Каталог включает 88 проверок. ID стабильны и пригодны для конфигурации, API, ссылок на находки и будущих страниц сайта. Наличие проверки в каталоге не означает, что она уже реализована. Блок LT01–LT16 подробно описан в [linting.md](linting.md).
 
 ## Как читать каталог
 
@@ -88,7 +88,7 @@ Protected branch/tag ограничивает действия, но не док
 | Q03 | Default branch green | Стабильность | Последняя обязательная завершённая pipeline актуальной ветки успешна; отдельно измеряются текущая незавершённая pipeline и время в красном состоянии. Старый success не доказывает состояние нового HEAD | Pipelines/jobs API, revision match, история переходов состояния | 5/5 |
 | Q04 | Coverage reporting | Тестирование | Coverage актуальна и относится к нужному scope; показывать общий trend и coverage изменённых строк. Пороги и допустимое падение определяет команда | [GitLab coverage](https://docs.gitlab.com/ci/testing/code_coverage/), Cobertura, coverage.py, [diff-cover](https://github.com/Bachmann1234/diff_cover) | 4/5 |
 | Q05 | Flaky test rate | Стабильность | Есть tests с различными исходами при сопоставимом коде, inputs и окружении; отделять подтверждённую нестабильность от подозрения и инфраструктурных сбоев | Testcase history, JUnit XML, job attempts, environment fingerprint, quarantine registry | 5/5 |
-| Q06 | Lint and formatting | Качество | Подходящие линтеры/форматтеры выполняются на нужных файлах и их провал учитывается политикой. Локальный hook без CI enforcement — только дополнительный механизм | [pre-commit](https://pre-commit.com/), [Ruff](https://docs.astral.sh/ruff/), ESLint и CI reports | 4/5 |
+| Q06 | Lint and formatting | Качество | Обзор линтинга и форматирования. В расширенном профиле вычисляется из LT01–LT16 и не даёт отдельный вес. Локальный hook без CI — только дополнительный механизм | [linting.md](linting.md); [pre-commit](https://pre-commit.com/), [Ruff](https://docs.astral.sh/ruff/), ESLint и CI reports | 4/5 |
 | Q07 | Type/static checks | Качество | Для применимого языка выполняются type/compile checks; видны scope, конфигурация и исключения. Массовые ignores не должны скрывать отсутствие покрытия | [mypy](https://mypy.readthedocs.io/), Pyright, TypeScript compiler, native compiler reports | 4/5 |
 | Q08 | SAST present | Безопасность | Scanner действительно анализирует нужный код свежими правилами; findings обрабатываются по политике. Конфиг без успешного запуска не подтверждает работающий контроль | [Semgrep](https://semgrep.dev/docs/), CodeQL, [GitLab SAST](https://docs.gitlab.com/user/application_security/sast/) | 4/5 |
 | Q09 | Complexity and duplication | Поддерживаемость | Растущая сложность, duplication и крупные модули; акцент на изменяемом коде и trend. Сравнения между языками требуют нормализации | [Radon](https://radon.readthedocs.io/), SonarQube, PMD/CPD; собственная агрегация | 3/5 |
@@ -99,6 +99,35 @@ Protected branch/tag ограничивает действия, но не док
 Для Q05 единица наблюдения — test case при конкретной ревизии, конфигурации и окружении. Отчёт показывает число сопоставимых повторов, test cases с расхождением и долю tests, для которых вообще были повторы. Повтор failed job, ставший успешным, — кандидат на анализ, но не достаточное доказательство flaky test. Если есть только job-level сведения, результат помечается proxy и не называется точной test-level rate.
 
 Истёкший JUnit/coverage artifact даёт UNKNOWN по недостающему факту. Подтверждённое отсутствие запуска тестов даёт FAIL. Quarantined tests показываются отдельно; их исключение из CI не должно искусственно улучшать наблюдаемую надёжность.
+
+Q06 не дублирует баллы LT-блока: в расширенном профиле это обзор со `scoring_enabled: false`. Детальные критерии линтеров — LT01–LT16.
+
+## LT. Линтинг и линтеры — 16 проверок
+
+| ID | Краткое название | Дополнительные категории | Что проверять и как трактовать | Реализация / evidence | Важность |
+| --- | --- | --- | --- | --- | ---: |
+| LT01 | Language and linter coverage | Качество | Для всех поддерживаемых языков/компонентов найден подходящий инструмент или обоснованное исключение. Установленный tool без связи с языковым scope недостаточен | Сопоставление tracked files, manifests и конфигов инструментов; [linting.md](linting.md) | 5/5 |
+| LT02 | Effective configuration declared | Качество | Найдена реально используемая конфигурация: локальная, встроенная в manifest, shared package/CLI flags либо явно принятые defaults закреплённой версии. Отсутствие отдельного файла само по себе не FAIL | Конфиги инструментов, pyproject/package scripts, pinned defaults | 4/5 |
+| LT03 | Configuration resolves successfully | Качество | Установленная версия понимает конфиг, плагины и наследование разрешаются. Подтверждённый invalid config — FAIL; ошибка окружения аудитора — UNKNOWN. Executable-конфиги не исполняются сборщиком | Статический разбор JSON/TOML/YAML; изолированный запуск инструмента — отдельный источник | 4/5 |
+| LT04 | Meaningful rules enabled | Качество | Включён согласованный baseline; обязательные правила не выключены глобально для production-кода. Число правил — не рейтинг качества | Preset/extends/select, отсутствие `ignore ALL` / пустого ruleset | 5/5 |
+| LT05 | Source scope is covered | Качество | Выборка включает нужные source/tests/scripts и сервисы monorepo. «0 файлов проверено» при обязательном scope — не PASS | Globs, ignores, working directory, file lists | 5/5 |
+| LT06 | Reproducible toolchain | Воспроизводимость | Версии линтеров, plugins, shared configs и runtime воспроизводимы; установка использует lock/pin | lockfiles, pre-commit `rev`, rust-toolchain, go.mod; пересечение с S06/S07 | 4/5 |
+| LT07 | Documented local lint command | Процесс | Есть переносимая команда (`make lint`, `npm run lint`, task/goal) того же нормативного набора; описаны prerequisites, cwd, check/fix | Makefile, package.json scripts, just/tox, README | 3/5 |
+| LT08 | Local hook integration | Процесс | pre-commit/pre-push/Husky/Lefthook вызывает быстрые проверки либо документирован CI-only профиль. Configured ≠ установлено у каждого разработчика | `.pre-commit-config.yaml`, `.husky/`, `lefthook.yml` | 3/5 |
+| LT09 | Lint runs in CI for relevant changes | CI/CD | Для MR с применимыми изменениями запущены ожидаемые lint jobs, включая смену lint-конфига/lockfile. YAML без запуска — не PASS | CI YAML + pipelines/jobs API на SHA | 5/5 |
+| LT10 | Lint passes on evaluated revision | Качество | Линтер завершился на оцениваемой ревизии, покрыл требуемую область и не превысил порог. Синтаксическая ошибка исходников — нарушение кода, не LT03 | Tool exit code, JSON/SARIF/Code Quality report | 5/5 |
+| LT11 | Lint failure blocks merge | CI/CD | Нарушение порога не маскируется `allow_failure`, `continue-on-error`, `\|\| true` или manual job; required check относится к нужной ревизии | Merge checks, job `allow_failure`, required status | 5/5 |
+| LT12 | Formatting checked separately | Качество | Если форматирование в политике, formatter работает в check/diff режиме. Успешный auto-fix без проверки исходного commit не подтверждает чистоту | `ruff format --check`, prettier `--check`, `cargo fmt --check` | 3/5 |
+| LT13 | Local and CI policies agree | Процесс | Версии, presets, flags и scope согласованы; local hooks могут проверять staged subset, но не противоречат CI | Сравнение hook config и CI commands | 4/5 |
+| LT14 | Suppressions and baseline controlled | Качество | У широких ignores/baselines есть причина, owner и пересмотр; новые подавления видны в diff. Не штрафовать любое `noqa` без анализа | Ignore-файлы, baseline/TODO, inline suppressions | 4/5 |
+| LT15 | Actionable lint reports | Качество | Доступны rule ID, message, path/line, severity, revision и tool version; JSON/SARIF или Code Quality. Пустой отчёт ≠ отсутствие запуска | CI artifacts, GitLab Code Quality | 3/5 |
+| LT16 | Lint policy changes reviewed | Review | Конфиги, suppressions, wrappers, hooks и CI lint jobs покрыты owners. Изменение правил в самом MR не должно незаметно убрать контроль | CODEOWNERS + approval rules; пересечение с G07 | 4/5 |
+
+### Как читать LT-блок
+
+Первая итерация реализации: LT01, LT02, LT05, LT09, LT10, LT11. Отсутствие adapter support даёт UNKNOWN, а не «линтера нет». Нельзя присвоить всему monorepo PASS по одной job одного сервиса. Полная методология, shortlist инструментов и модель evidence — в [linting.md](linting.md).
+
+Q07 (типы/статика) и Q08 (SAST) остаются отдельными: тот же finding не считается дважды; роли tools помечаются явно.
 
 ## S. Безопасность и software supply chain — 12 проверок
 

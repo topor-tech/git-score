@@ -1,16 +1,21 @@
-"""Stable catalog for the 72 checks in docs/repository-checks/checks.md."""
+"""Stable catalog for the checks in docs/repository-checks/checks.md."""
 
 from __future__ import annotations
+
+import re
 
 GROUPS: dict[str, dict[str, str]] = {
     "R": {"title": "Git integrity and hygiene", "title_ru": "Целостность и гигиена Git"},
     "D": {"title": "Documentation, ownership, governance", "title_ru": "Документация, ownership и управление"},
     "G": {"title": "History protection and change control", "title_ru": "Защита истории и управление изменениями"},
     "Q": {"title": "CI, tests, and code quality", "title_ru": "CI, тестирование и качество кода"},
+    "LT": {"title": "Linting and linters", "title_ru": "Линтинг и линтеры"},
     "S": {"title": "Security and software supply chain", "title_ru": "Безопасность и software supply chain"},
     "L": {"title": "Releases and reproducibility", "title_ru": "Релизы и воспроизводимость"},
     "T": {"title": "Team and actual process", "title_ru": "Команда и фактический процесс"},
 }
+
+_ID_GROUP = re.compile(r"^([A-Z]+)\d+")
 
 # evaluation_mode: policy (PASS/WARN/FAIL) or observation (status null).
 # sources: git, fs, gitlab_api, ci_artifacts, registry, deployments
@@ -24,11 +29,11 @@ CHECKS: list[dict] = [
     {"id": "R07", "title": "Valid submodules", "tags": ["supply-chain"], "importance": 4, "evaluation_mode": "policy", "sources": ["git"], "check_type": "state"},
     {"id": "R08", "title": "Repository maintenance", "tags": ["performance"], "importance": 2, "evaluation_mode": "observation", "sources": ["git"], "check_type": "state"},
     {"id": "D01", "title": "Useful README", "tags": ["onboarding"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
-    {"id": "D02", "title": "Explicit ownership", "tags": ["resilience"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "D02", "title": "Explicit ownership", "tags": ["resilience"], "importance": 2, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "D03", "title": "CODEOWNERS coverage", "tags": ["review"], "importance": 5, "evaluation_mode": "policy", "sources": ["git", "fs"], "check_type": "state"},
     {"id": "D04", "title": "Contribution guide", "tags": ["process"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "D05", "title": "Security policy", "tags": ["security"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
-    {"id": "D06", "title": "Production runbook", "tags": ["operations"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "D06", "title": "Production runbook", "tags": ["operations"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "D07", "title": "Architecture documentation", "tags": ["maintainability"], "importance": 3, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "D08", "title": "License declared", "tags": ["licensing", "supply-chain"], "importance": 2, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "D09", "title": "MR/issue templates", "tags": ["process"], "importance": 3, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
@@ -50,11 +55,27 @@ CHECKS: list[dict] = [
     {"id": "Q03", "title": "Default branch green", "tags": ["stability"], "importance": 5, "evaluation_mode": "policy", "sources": ["gitlab_api"], "check_type": "state"},
     {"id": "Q04", "title": "Coverage reporting", "tags": ["testing"], "importance": 4, "evaluation_mode": "observation", "sources": ["fs", "ci_artifacts"], "check_type": "process"},
     {"id": "Q05", "title": "Flaky test rate", "tags": ["stability"], "importance": 5, "evaluation_mode": "observation", "sources": ["ci_artifacts"], "check_type": "trend"},
-    {"id": "Q06", "title": "Lint and formatting", "tags": ["quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "Q06", "title": "Lint and formatting", "tags": ["quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state", "scoring_enabled": False},
     {"id": "Q07", "title": "Type/static checks", "tags": ["quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "Q08", "title": "SAST present", "tags": ["security"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "Q09", "title": "Complexity and duplication", "tags": ["maintainability"], "importance": 3, "evaluation_mode": "observation", "sources": ["fs"], "check_type": "trend"},
     {"id": "Q10", "title": "CI feedback time", "tags": ["efficiency"], "importance": 4, "evaluation_mode": "observation", "sources": ["gitlab_api"], "check_type": "trend"},
+    {"id": "LT01", "title": "Language and linter coverage", "tags": ["quality"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT02", "title": "Effective configuration declared", "tags": ["quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT03", "title": "Configuration resolves successfully", "tags": ["quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT04", "title": "Meaningful rules enabled", "tags": ["quality"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT05", "title": "Source scope is covered", "tags": ["quality"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT06", "title": "Reproducible toolchain", "tags": ["quality", "reproducibility"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT07", "title": "Documented local lint command", "tags": ["process", "quality"], "importance": 3, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT08", "title": "Local hook integration", "tags": ["process", "quality"], "importance": 3, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT09", "title": "Lint runs in CI for relevant changes", "tags": ["ci", "quality"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs", "gitlab_api"], "check_type": "process"},
+    {"id": "LT10", "title": "Lint passes on evaluated revision", "tags": ["quality"], "importance": 5, "evaluation_mode": "policy", "sources": ["ci_artifacts"], "check_type": "process"},
+    {"id": "LT11", "title": "Lint failure blocks merge", "tags": ["ci", "quality"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs", "gitlab_api"], "check_type": "state"},
+    {"id": "LT12", "title": "Formatting checked separately", "tags": ["quality"], "importance": 3, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT13", "title": "Local and CI policies agree", "tags": ["process", "quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT14", "title": "Suppressions and baseline controlled", "tags": ["quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT15", "title": "Actionable lint reports", "tags": ["quality"], "importance": 3, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
+    {"id": "LT16", "title": "Lint policy changes reviewed", "tags": ["review", "quality"], "importance": 4, "evaluation_mode": "policy", "sources": ["fs"], "check_type": "state"},
     {"id": "S01", "title": "Secret scanning", "tags": ["security"], "importance": 5, "evaluation_mode": "policy", "sources": ["git", "fs"], "check_type": "state"},
     {"id": "S02", "title": "Push secret protection", "tags": ["security"], "importance": 5, "evaluation_mode": "policy", "sources": ["gitlab_api"], "check_type": "state"},
     {"id": "S03", "title": "Vulnerable dependencies", "tags": ["dependencies"], "importance": 5, "evaluation_mode": "policy", "sources": ["fs", "registry"], "check_type": "state"},
@@ -90,7 +111,7 @@ CHECKS: list[dict] = [
 ]
 
 BY_ID = {c["id"]: c for c in CHECKS}
-assert len(CHECKS) == 72, len(CHECKS)
+assert len(CHECKS) == 88, len(CHECKS)
 
 
 def definition(check_id: str) -> dict:
@@ -98,11 +119,12 @@ def definition(check_id: str) -> dict:
 
 
 def group_of(check_id: str) -> str:
-    return check_id[0]
+    match = _ID_GROUP.match(check_id)
+    return match.group(1) if match else check_id[0]
 
 
 def public_definition(check: dict, wiki: dict | None = None) -> dict:
-    gid = check["id"][0]
+    gid = group_of(check["id"])
     page = wiki or {}
     return {
         "id": check["id"],
@@ -116,6 +138,7 @@ def public_definition(check: dict, wiki: dict | None = None) -> dict:
         "evaluation_mode": check["evaluation_mode"],
         "check_type": check["check_type"],
         "required_sources": check["sources"],
+        "scoring_enabled": check.get("scoring_enabled", True),
         "interpretation": page.get("interpretation") or "",
         "implementation": page.get("implementation") or "",
         "notes": page.get("notes") or "",

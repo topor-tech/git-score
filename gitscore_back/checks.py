@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from gitscore_back import git_cli
-from gitscore_back.catalog import BY_ID, CHECKS, GROUPS
+from gitscore_back.catalog import BY_ID, CHECKS, GROUPS, group_of
 from gitscore_back.config import COMMIT_HISTORY_CAP, HIDDEN_DIR_NAMES
 from gitscore_back.files import looks_like_credential
 
@@ -138,8 +138,9 @@ def _result(
     score: float | None = None,
 ) -> dict:
     meta = BY_ID[check_id]
-    gid = check_id[0]
+    gid = group_of(check_id)
     mode = meta["evaluation_mode"]
+    scoring_enabled = meta.get("scoring_enabled", True)
     if mode == "observation":
         out_status = None if status not in {"UNKNOWN", "NOT_APPLICABLE"} else status
         out_score = None if out_status in {None, "UNKNOWN", "NOT_APPLICABLE"} else score
@@ -153,6 +154,8 @@ def _result(
             out_score = 0.0
         else:
             out_score = score
+    if not scoring_enabled:
+        out_score = None
     return {
         "id": check_id,
         "check_id": check_id,
@@ -160,6 +163,7 @@ def _result(
         "category": gid,
         "group": gid,
         "group_title": GROUPS[gid]["title"],
+        "scoring_enabled": scoring_enabled,
         "tags": meta["tags"],
         "importance": meta["importance"],
         "evaluation_mode": mode,
@@ -1283,31 +1287,8 @@ def _config_present(ctx: RepoContext, names: tuple[str, ...], substrings: tuple[
 
 
 def check_q06(ctx: RepoContext) -> dict:
-    paths = _config_present(
-        ctx,
-        (".pre-commit-config.yaml", ".pre-commit-config.yml", ".eslintrc.json", ".eslintrc.cjs", "ruff.toml", ".ruff.toml", ".flake8", ".pylintrc"),
-        ("eslint.config", "/ruff.toml", "prettier", ".golangci."),
-    )
-    if not paths:
-        return _result(
-            "Q06",
-            status="FAIL",
-            summary="No linter/formatter config found (pre-commit, ruff, eslint, …).",
-            evidence={"paths": []},
-            evidence_flags={"declared": False},
-            remediation="Add a linter/formatter and fail CI when it fails. A local hook alone is not enforcement.",
-        )
-    ci = _ci_paths(ctx)
-    status = "WARN" if not ci else "PASS"
-    extra = " CI config exists so enforcement is plausible but not proven." if ci else " No CI config — local-only."
-    return _result(
-        "Q06",
-        status=status,
-        summary=f"Found {paths[0]}.{extra}",
-        evidence={"paths": paths[:15] + ci[:5]},
-        evidence_flags={"declared": True, "enforced": None, "observed": False},
-        remediation="Run the same linters in CI as required checks." if status == "WARN" else None,
-    )
+    from gitscore_back.lint_checks import overview_q06
+    return overview_q06(ctx, {})
 
 
 def check_q07(ctx: RepoContext) -> dict:
@@ -2121,12 +2102,15 @@ RUNNERS = {
 
 
 def run_all(ctx: RepoContext, on_each=None) -> list[dict]:
+    from gitscore_back.lint_checks import LT_RUNNERS, overview_q06
+
+    runners = {**RUNNERS, **LT_RUNNERS}
     results: list[dict] = []
     total = len(CHECKS)
     for i, spec in enumerate(CHECKS, start=1):
         if on_each:
             on_each(results, spec["id"], i, total)
-        fn = RUNNERS[spec["id"]]
+        fn = runners[spec["id"]]
         try:
             item = fn(ctx)
         except Exception as exc:
@@ -2138,4 +2122,12 @@ def run_all(ctx: RepoContext, on_each=None) -> list[dict]:
         results.append(item)
         if on_each:
             on_each(results, spec["id"], i, total)
+    by_id = {item["id"]: item for item in results}
+    q06 = overview_q06(ctx, by_id)
+    for i, item in enumerate(results):
+        if item["id"] == "Q06":
+            results[i] = q06
+            if on_each:
+                on_each(results, "Q06", i + 1, total)
+            break
     return results
