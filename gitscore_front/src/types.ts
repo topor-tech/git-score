@@ -1,5 +1,7 @@
 export type CheckStatus = "PASS" | "WARN" | "FAIL" | "NOT_APPLICABLE" | "UNKNOWN" | null;
 
+export type GroupBy = "group" | "priority";
+
 export type CheckResult = {
   id: string;
   check_id?: string;

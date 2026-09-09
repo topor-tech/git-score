@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CheckResult } from "./types";
+import type { CheckResult, GroupBy } from "./types";
 
 const GROUP_ORDER = ["R", "D", "G", "Q", "S", "L", "T"];
 const GROUP_TITLES: Record<string, string> = {
@@ -11,8 +11,6 @@ const GROUP_TITLES: Record<string, string> = {
   L: "Release",
   T: "Team & process",
 };
-
-type GroupBy = "group" | "priority";
 
 function statusRank(check: CheckResult): number {
   const order: Record<string, number> = {
@@ -157,18 +155,21 @@ function CheckRow({
 export default function CheckList({
   checks,
   status,
+  groupBy,
+  onGroupByChange,
   onOpenPath,
   progressLabel,
   progressPercent,
 }: {
   checks: CheckResult[];
   status: string;
+  groupBy: GroupBy;
+  onGroupByChange: (groupBy: GroupBy) => void;
   onOpenPath: (path: string) => void;
   progressLabel?: string | null;
   progressPercent?: number | null;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [groupBy, setGroupBy] = useState<GroupBy>("group");
 
   const grouped = useMemo(() => {
     const sorted = [...checks].sort((a, b) => {
@@ -224,14 +225,14 @@ export default function CheckList({
         <button
           type="button"
           className={groupBy === "group" ? "active" : ""}
-          onClick={() => setGroupBy("group")}
+          onClick={() => onGroupByChange("group")}
         >
           By group
         </button>
         <button
           type="button"
           className={groupBy === "priority" ? "active" : ""}
-          onClick={() => setGroupBy("priority")}
+          onClick={() => onGroupByChange("priority")}
         >
           By priority
         </button>

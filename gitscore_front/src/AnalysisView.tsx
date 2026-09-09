@@ -3,7 +3,7 @@ import { createAnalysis, getAnalysis } from "./api";
 import ChatPane from "./ChatPane";
 import CheckList from "./CheckList";
 import RepoPane from "./RepoPane";
-import type { Analysis } from "./types";
+import type { Analysis, GroupBy } from "./types";
 
 function shortError(message: string | null): string {
   if (!message) return "analysis failed";
@@ -21,9 +21,13 @@ function shortError(message: string | null): string {
 
 export default function AnalysisView({
   id,
+  groupBy,
+  onGroupByChange,
   onHome,
 }: {
   id: string;
+  groupBy: GroupBy;
+  onGroupByChange: (groupBy: GroupBy) => void;
   onHome: () => void;
 }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -78,7 +82,7 @@ export default function AnalysisView({
   async function rerun() {
     if (!analysis) return;
     const created = await createAnalysis(analysis.source);
-    window.location.hash = `#/a/${created.id}`;
+    window.location.hash = `#/a/${created.id}?by=${groupBy}`;
   }
 
   return (
@@ -105,6 +109,8 @@ export default function AnalysisView({
           <CheckList
             checks={analysis.checks}
             status={analysis.status}
+            groupBy={groupBy}
+            onGroupByChange={onGroupByChange}
             onOpenPath={setSelectedPath}
             progressLabel={analysis.progress?.label}
             progressPercent={analysis.progress?.percent}

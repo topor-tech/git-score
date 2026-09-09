@@ -2,18 +2,36 @@ import { useEffect, useState } from "react";
 import AnalysisView from "./AnalysisView";
 import Landing from "./Landing";
 import WikiView from "./WikiView";
+import type { GroupBy } from "./types";
 
 type Route =
   | { kind: "home" }
-  | { kind: "analysis"; id: string }
+  | { kind: "analysis"; id: string; groupBy: GroupBy }
   | { kind: "wiki"; checkId: string | null };
+
+function parseGroupBy(value: string | null): GroupBy {
+  return value === "priority" || value === "by_priority" ? "priority" : "group";
+}
+
+function analysisHash(id: string, groupBy: GroupBy = "group"): string {
+  return `#/a/${encodeURIComponent(id)}?by=${groupBy}`;
+}
 
 function parseHash(): Route {
   const h = window.location.hash.replace(/^#/, "") || "/";
-  const wiki = h.match(/^\/wiki(?:\/([A-Za-z]\d{2}))?\/?$/);
+  const qIndex = h.indexOf("?");
+  const path = (qIndex >= 0 ? h.slice(0, qIndex) : h) || "/";
+  const params = new URLSearchParams(qIndex >= 0 ? h.slice(qIndex + 1) : "");
+  const wiki = path.match(/^\/wiki(?:\/([A-Za-z]\d{2}))?\/?$/);
   if (wiki) return { kind: "wiki", checkId: wiki[1] ? wiki[1].toUpperCase() : null };
-  const analysis = h.match(/^\/a\/([^/]+)$/);
-  if (analysis) return { kind: "analysis", id: decodeURIComponent(analysis[1]) };
+  const analysis = path.match(/^\/a\/([^/]+)$/);
+  if (analysis) {
+    return {
+      kind: "analysis",
+      id: decodeURIComponent(analysis[1]),
+      groupBy: parseGroupBy(params.get("by")),
+    };
+  }
   return { kind: "home" };
 }
 
@@ -27,7 +45,7 @@ export default function App() {
   }, []);
 
   function open(next: string) {
-    window.location.hash = `#/a/${next}`;
+    window.location.hash = analysisHash(next);
   }
 
   function home() {
@@ -55,7 +73,16 @@ export default function App() {
         </nav>
       </header>
       {route.kind === "wiki" ? <WikiView checkId={route.checkId} /> : null}
-      {route.kind === "analysis" ? <AnalysisView id={route.id} onHome={home} /> : null}
+      {route.kind === "analysis" ? (
+        <AnalysisView
+          id={route.id}
+          groupBy={route.groupBy}
+          onGroupByChange={(groupBy) => {
+            window.location.hash = analysisHash(route.id, groupBy);
+          }}
+          onHome={home}
+        />
+      ) : null}
       {route.kind === "home" ? <Landing onOpen={open} /> : null}
     </>
   );
