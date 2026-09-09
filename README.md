@@ -10,14 +10,14 @@ Git must be on `PATH`. Copy `.env.example` to `.env` and set an OpenAI-compatibl
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\pip install -r backend\requirements.txt
-.\.venv\Scripts\python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+.\.venv\Scripts\pip install -r gitscore_back\requirements.txt
+.\.venv\Scripts\python -m uvicorn gitscore_back.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
 In a second terminal:
 
 ```powershell
-cd web
+cd gitscore_front
 npm install
 npm run dev
 ```
